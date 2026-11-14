@@ -73,7 +73,7 @@ pub fn run(gpu: Gpu) !void {
         std.debug.print("SKIP modelopt checkpoint experts: the block-scaled FP4 mma needs sm_120a\n", .{});
         return;
     }
-    try checkpointExperts(gpu, rng, stream, capability / 10);
+    try checkpointExperts(gpu, rng, stream);
 }
 
 /// Every GPU repack byte-equal to its host twin.
@@ -400,7 +400,7 @@ fn experts(gpu: Gpu, rng: std.Random, p: *const modelopt.Packer, s: cuda.Stream)
 }
 
 /// cuda/ck.zig's experts at 1, 16 and 32 token rows (the _few kernels) byte-equal to the same pairs in a 40-row call.
-fn checkpointExperts(gpu: Gpu, rng: std.Random, s: cuda.Stream, major: u32) !void {
+fn checkpointExperts(gpu: Gpu, rng: std.Random, s: cuda.Stream) !void {
     const a = gpu.gpa;
     const e = 6;
     const width = 320;
