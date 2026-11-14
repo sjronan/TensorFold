@@ -159,7 +159,7 @@ pub const Kernels = struct {
         if (k.ck != null) return;
         const major: u32 = @intCast(try ctx.attribute(.compute_capability_major));
         if (major < ck_major) return error.CheckpointMathNeedsBlackwell;
-        k.ck = try cuda.ck.Ck.load(k.d, major, @intCast(try ctx.attribute(.multiprocessor_count)));
+        k.ck = try cuda.ck.Ck.load(k.d, @intCast(try ctx.capability()), @intCast(try ctx.attribute(.multiprocessor_count)));
     }
 
     /// The lane matmul, prompt GEMM, NVFP4 experts and repack a ModelOpt checkpoint's FP8, NVFP4 and bf16 tensors need.

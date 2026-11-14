@@ -409,7 +409,7 @@ fn checkpointExperts(gpu: Gpu, rng: std.Random, s: cuda.Stream, major: u32) !voi
     const slots = 2;
     const pairs = rows * slots;
     const sms: usize = @intCast(try gpu.ctx.attribute(.multiprocessor_count));
-    var ck = try cuda.ck.Ck.load(gpu.d, major, sms);
+    var ck = try cuda.ck.Ck.load(gpu.d, @intCast(try gpu.ctx.capability()), sms);
     defer ck.unload();
     var w: [2][2]cuda.DeviceBuffer = undefined; // up, down: words, scale tiles
     var made: usize = 0;

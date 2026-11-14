@@ -178,7 +178,7 @@ pub fn run(gpu: check.Gpu) !void {
         for (r.bufs.items) |*b| b.free();
         r.bufs.deinit(gpu.gpa);
     }
-    var q = try cuda.ck.Ck.load(gpu.d, major, @intCast(try gpu.ctx.attribute(.multiprocessor_count)));
+    var q = try cuda.ck.Ck.load(gpu.d, @intCast(try gpu.ctx.capability()), @intCast(try gpu.ctx.attribute(.multiprocessor_count)));
     defer q.unload();
     try experts(&r, &q, 129, 256, 192, 2); // partial row and column tiles
     try experts(&r, &q, 300, 1024, 1344, 96); // Super's routed widths, more units than resident blocks

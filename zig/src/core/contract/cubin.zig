@@ -9,7 +9,7 @@ const sht_nobits = 8;
 const max_threads_attr = 0x05;
 const regcount_attr = 0x2f;
 const sval = 0x04;
-/// sm_120 and sm_121 images count a block's 1 KiB of reserved shared memory in .nv.shared; the driver does not.
+/// sm_103, sm_120 and sm_121 images count a block's 1 KiB of reserved shared memory in .nv.shared; the driver does not.
 const reserved_shared = 1024;
 /// An entry header holds kind, its own size, the payload's, the SM at 28 and the flags at 40: 48 bytes at least.
 const entry_fields = 48;
@@ -123,7 +123,7 @@ pub fn kernels(a: std.mem.Allocator, elf: []const u8, sm: u32) ![]Kernel {
         var u = limits.Usage{ .regs = try record(global, regcount_attr, s.info & 0xffffff) orelse s.info >> 24, .static = 0 };
         for (all) |t| {
             if (std.mem.startsWith(u8, t.name, ".nv.shared.") and std.mem.eql(u8, t.name[".nv.shared.".len..], name)) {
-                const static = if (sm >= 120 and t.size >= reserved_shared) t.size - reserved_shared else t.size;
+                const static = if ((sm == 103 or sm >= 120) and t.size >= reserved_shared) t.size - reserved_shared else t.size;
                 u.static = std.math.cast(u32, static) orelse return error.BadElf;
             }
             if (std.mem.startsWith(u8, t.name, ".nv.info.") and std.mem.eql(u8, t.name[".nv.info.".len..], name) and t.kind != sht_nobits)
@@ -248,7 +248,7 @@ test "a cubin's registers, static shared bytes and launch bounds" {
         const imgs = try images(a, elf);
         defer freeImages(a, imgs);
         try std.testing.expectEqual(@as(usize, 1), imgs.len);
-        for ([_]u32{ 86, 121 }, [_]u32{ 1060, 36 }) |sm, static| {
+        for ([_]u32{ 86, 103, 121 }, [_]u32{ 1060, 36, 36 }) |sm, static| {
             const ks = try kernels(a, imgs[0].elf, sm);
             defer a.free(ks);
             try std.testing.expectEqual(@as(usize, 1), ks.len);

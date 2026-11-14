@@ -322,8 +322,8 @@ fn registered(gpu: check.Gpu, only: []const []const u8, t0: *i96) !g.Tally {
     var ck: ?cuda.ck.Ck = null;
     var ck_reduce: ?cuda.ck.Ck = null; // no clusters: the FP8 slices meet in tf_ck8_reduce
     if (cap >= 120) {
-        ck = try cuda.ck.Ck.load(gpu.d, cap / 10, sms);
-        ck_reduce = try cuda.ck.Ck.load(gpu.d, cap / 10, sms);
+        ck = try cuda.ck.Ck.load(gpu.d, cap, sms);
+        ck_reduce = try cuda.ck.Ck.load(gpu.d, cap, sms);
         ck_reduce.?.clusters = false;
     } else std.debug.print("N/A  ck experts: the block-scaled FP4 mma needs sm_120a, this GPU is sm_{d}\n", .{cap});
     defer if (ck) |*q| q.unload();

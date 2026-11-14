@@ -69,8 +69,9 @@ pub const Ck = struct {
     prompt_resident: [3]usize,
     clusters: bool,
 
-    pub fn load(d: *const Driver, capability_major: u32, sms: usize) !Ck {
-        if (capability_major != 12) return error.CheckpointMathNeedsSm12x;
+    /// The block-scaled warp MMA is available only on sm_120a and sm_121a.
+    pub fn load(d: *const Driver, capability: u32, sms: usize) !Ck {
+        if (capability != 120 and capability != 121) return error.CheckpointMathNeedsSm12x;
         if (!kernels.available) return error.BuiltWithoutKernels;
         var lane_mod = try Module.load(d, kernels.ck_lane);
         errdefer lane_mod.unload();
@@ -95,7 +96,7 @@ pub const Ck = struct {
             f.* = try experts_mod.function(name);
             n.* = @max(1, try f.occupancy(256, 0)) * sms;
         }
-        c.clusters = capability_major >= 9;
+        c.clusters = capability >= 90;
         return c;
     }
 
@@ -278,7 +279,14 @@ test "the factors and the row bytes" {
 }
 
 test "unsupported checkpoint MMA is refused before driver access" {
-    for ([_]u32{ 8, 9, 10, 11, 13 }) |major| {
-        try std.testing.expectError(error.CheckpointMathNeedsSm12x, Ck.load(undefined, major, 1));
+    for ([_]u32{ 80, 86, 89, 90, 100, 103, 110, 119, 122, 130 }) |cap| {
+        try std.testing.expectError(error.CheckpointMathNeedsSm12x, Ck.load(undefined, cap, 1));
     }
+}
+
+
+test "supported checkpoint targets reach kernel availability without touching the driver" {
+    if (kernels.available) return;
+    for ([_]u32{ 120, 121 }) |cap|
+        try std.testing.expectError(error.BuiltWithoutKernels, Ck.load(undefined, cap, 1));
 }
