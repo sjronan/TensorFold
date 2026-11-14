@@ -33,7 +33,7 @@ pub const Profile = struct { number: u32, arch_specific: bool };
 /// The one profile `k`'s image holds for `sm` (`sm_<n>a` for arch-specific kernels from 120), null below `min_sm`.
 pub fn profile(k: Kernel, sm: Target) ?Profile {
     if (sm.number < k.min_sm) return null;
-    const added = k.arch_specific and sm.number >= 120 and sm.suffix.len == 0;
+    const added = k.arch_specific and (sm.number >= 120 or (k.native_fp and sm.number == 103)) and sm.suffix.len == 0;
     return .{ .number = sm.number, .arch_specific = added or std.mem.eql(u8, sm.suffix, "a") };
 }
 
@@ -213,4 +213,11 @@ test "native_fp units: exactly fp8_experts, qmmf and prompt16 (without the flag 
         } else return error.UnexpectedNativeFpUnit;
     }
     try std.testing.expectEqual(want.len, seen);
+}
+
+test "native FP decode on sm_103 selects its architecture-specific image" {
+    const k = nativeFp(std.testing.allocator, .{ .name = "probe", .flags = &.{}, .native_fp = true }, true);
+    defer std.testing.allocator.free(k.flags);
+    try std.testing.expectEqual(Profile{ .number = 103, .arch_specific = true }, profile(k, Target.parse("103")).?);
+    try std.testing.expectEqual(Profile{ .number = 103, .arch_specific = false }, profile(.{ .name = "ck", .flags = &.{}, .arch_specific = true }, Target.parse("103")).?);
 }

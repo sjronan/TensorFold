@@ -70,6 +70,7 @@ pub const Ck = struct {
     clusters: bool,
 
     pub fn load(d: *const Driver, capability_major: u32, sms: usize) !Ck {
+        if (capability_major != 12) return error.CheckpointMathNeedsSm12x;
         if (!kernels.available) return error.BuiltWithoutKernels;
         var lane_mod = try Module.load(d, kernels.ck_lane);
         errdefer lane_mod.unload();
@@ -274,4 +275,10 @@ test "the factors and the row bytes" {
     try std.testing.expectEqual(@as(f32, 0.5) * @as(f32, 0.25), alpha(0.5, 0.25));
     try std.testing.expectEqual(@as(usize, 4 * 512 + 4 * 64), rowsBytes(4, 1024));
     try std.testing.expectEqual([2]usize{ 2 * 64 * 1024 / 2, 2 * 64 * 64 }, Ck.packedBytes(2, 64, 1024));
+}
+
+test "unsupported checkpoint MMA is refused before driver access" {
+    for ([_]u32{ 8, 9, 10, 11, 13 }) |major| {
+        try std.testing.expectError(error.CheckpointMathNeedsSm12x, Ck.load(undefined, major, 1));
+    }
 }

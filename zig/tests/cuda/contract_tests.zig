@@ -65,7 +65,6 @@ const q35_contiguous = @import("contract_q35_contiguous.zig");
 const contract = core.contract;
 const g = contract.gates;
 const kk = cuda.kernels;
-
 const images = struct {
     pub const controls align(16) = @embedFile("fatbin_contract_controls").*;
     pub const h3 align(16) = @embedFile("fatbin_h3").*;
@@ -324,7 +323,8 @@ fn registered(gpu: check.Gpu, only: []const []const u8, t0: *i96) !g.Tally {
     var ck_reduce: ?cuda.ck.Ck = null; // no clusters: the FP8 slices meet in tf_ck8_reduce
     if (cap >= 120) {
         ck = try cuda.ck.Ck.load(gpu.d, cap / 10, sms);
-        ck_reduce = try cuda.ck.Ck.load(gpu.d, 8, sms);
+        ck_reduce = try cuda.ck.Ck.load(gpu.d, cap / 10, sms);
+        ck_reduce.?.clusters = false;
     } else std.debug.print("N/A  ck experts: the block-scaled FP4 mma needs sm_120a, this GPU is sm_{d}\n", .{cap});
     defer if (ck) |*q| q.unload();
     defer if (ck_reduce) |*q| q.unload();

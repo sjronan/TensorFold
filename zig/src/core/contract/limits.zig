@@ -51,6 +51,9 @@ pub const sms = [_]Sm{
     .{ .sm = 121, .threads_sm = 1536, .smem_optin = 99 * 1024, .clusters = true },
 };
 
+/// sm_103 development builds audit compiled cubins instead of the five release targets' pinned records.
+pub const gb300: Sm = .{ .sm = 103, .threads_sm = 2048, .smem_optin = 227 * 1024, .clusters = true };
+
 /// sm_110 has no pinned usage records; the limits runner reads its compiled cubins.
 pub const thor: Sm = .{ .sm = 110, .threads_sm = 1536, .smem_optin = 227 * 1024, .clusters = true };
 
@@ -278,6 +281,7 @@ test "a launch inside every family passes; each planted excess is named" {
 pub fn target(sm: u32) ?Sm {
     for (sms) |t| if (t.sm == sm) return t;
     if (sm == thor.sm) return thor;
+    if (sm == gb300.sm) return gb300;
     return null;
 }
 
@@ -368,4 +372,19 @@ pub fn vulkanFits(launch: VulkanLaunch, device: VulkanDeviceLimits) error{Unmeas
         total *= asked;
     }
     return total <= invocations and launch.shared_bytes <= shared;
+}
+
+test "sm_103 development limits use datacenter per-block shared memory" {
+    const a = std.testing.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(a);
+    const t = target(103) orelse return error.MissingSm103;
+    try std.testing.expectEqual(@as(u32, 2048), t.threads_sm);
+    try std.testing.expectEqual(@as(u32, 227 * 1024), t.smem_optin);
+    try std.testing.expect(t.clusters);
+    var l = CudaLaunch{ .name = "sm103", .symbol = "k", .image = "k", .threads = 256, .dynamic = 227 * 1024, .opt_in = true };
+    try std.testing.expectEqual(@as(usize, 0), try cuda(l, .{ .regs = 32, .static = 0 }, t, &out, a));
+    l.dynamic += 1;
+    try std.testing.expectEqual(@as(usize, 1), try cuda(l, .{ .regs = 32, .static = 0 }, t, &out, a));
+    try std.testing.expectEqual(@as(usize, 5), sms.len);
 }

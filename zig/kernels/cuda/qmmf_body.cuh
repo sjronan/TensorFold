@@ -23,7 +23,7 @@
 
 #ifndef TF_QMMF_STRIDED
     [[maybe_unused]] uint64_t* ready = reinterpret_cast<uint64_t*>(buf + STAGES * T::STAGE); // K32 has no barriers
-#if __CUDA_ARCH__ >= 1200
+#if (__CUDA_ARCH__ == 1030 || __CUDA_ARCH__ >= 1200)
     if constexpr (T::BARRIERS > 0) {
         if (tid == 0) {
 #pragma unroll
@@ -51,7 +51,7 @@
         }
         unsigned char* pw = p + T::X;
         constexpr int TILE_BYTES = MODE == FP4 ? 64 * GS / 2 : MODE == BF16 ? 64 * GS * 2 : 64 * GS;
-#if __CUDA_ARCH__ >= 1200 && !defined(TF_QMMF_STRIDED)
+#if (__CUDA_ARCH__ == 1030 || __CUDA_ARCH__ >= 1200) && !defined(TF_QMMF_STRIDED)
         if constexpr (T::BARRIERS > 0) {
             if (tid == 0) {
                 const uint32_t bar = smem(ready + s);
@@ -131,7 +131,7 @@
             }
         }
         wait<STAGES - 2>();
-#if __CUDA_ARCH__ >= 1200 && !defined(TF_QMMF_STRIDED)
+#if (__CUDA_ARCH__ == 1030 || __CUDA_ARCH__ >= 1200) && !defined(TF_QMMF_STRIDED)
         if constexpr (T::BARRIERS > 0) {
             const uint32_t bar = smem(ready + it % STAGES), phase = (it / STAGES) & 1;
             asm volatile("{ .reg .pred done; WAIT: mbarrier.try_wait.parity.shared::cta.b64 done, [%0], %1;"

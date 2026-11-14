@@ -4,11 +4,12 @@
 #include <cuda_fp8.h>
 #include <stdint.h>
 
-// -Dnative-fp-decode (TF_NATIVE_FP_DECODE): PTX ISA 9.2's one-instruction FP4/FP8 pair decode, sm_120 family targets.
+// -Dnative-fp-decode: PTX ISA 9.2 FP4/FP8 pair decode on sm_103a and sm_120 family targets.
 #if defined(TF_NATIVE_FP_DECODE) && (__CUDACC_VER_MAJOR__ * 100 + __CUDACC_VER_MINOR__ < 1302)
 #error "-Dnative-fp-decode needs nvcc 13.2 or newer (PTX ISA 9.2's cvt.rn.bf16x2.e2m1x2 and .e4m3x2)"
 #endif
-#if defined(TF_NATIVE_FP_DECODE) && defined(__CUDA_ARCH_FAMILY_SPECIFIC__) && __CUDA_ARCH_FAMILY_SPECIFIC__ >= 1200
+#if defined(TF_NATIVE_FP_DECODE) && ((defined(__CUDA_ARCH_FAMILY_SPECIFIC__) && __CUDA_ARCH_FAMILY_SPECIFIC__ >= 1200) || \
+    defined(__CUDA_ARCH_FEAT_SM103_ALL))
 #define TF_FP_NATIVE 1
 #else
 #define TF_FP_NATIVE 0

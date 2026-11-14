@@ -10,8 +10,8 @@
 
 // ---------------------------------------------------------------------------------------------------------------
 
-// sm_120 and sm_121 read a warp's next k tile ahead, bit-equal (contract_exl3_grouped.zig); older SMs keep main's loop.
-#if __CUDA_ARCH__ >= 1200
+// sm_103, sm_120 and sm_121 read a warp's next k tile ahead; other SMs keep the original loop.
+#if (__CUDA_ARCH__ == 1030 || __CUDA_ARCH__ >= 1200)
 constexpr int GROUPED_LOAD = tf_exl3::AHEAD;
 #else
 constexpr int GROUPED_LOAD = tf_exl3::PLAIN;

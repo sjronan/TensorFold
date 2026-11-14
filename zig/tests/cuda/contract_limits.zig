@@ -126,9 +126,9 @@ fn records(what: []const u8, rel: ?limits.Nvcc, set: limits.Nvcc) void {
     } else std.debug.print("INFO limits {s}: the images name no nvcc release; checked against nvcc {d}.{d}'s records\n", .{ what, set.major, set.minor });
 }
 
-/// Only sm_110 cubins need the loader's raised shared-memory limit for these launches.
+/// Development cubins need the loader's raised shared-memory limit for these launches.
 fn auditLaunch(launch: limits.CudaLaunch, sm: u32) limits.CudaLaunch {
-    if (sm != 110) return launch;
+    if (sm != 110 and sm != 103) return launch;
     const raised = [_][]const u8{
         "qmmf FP8 64-row tile", // zig/src/cuda/qmmf.zig:147
         "qmmf FP8 64-row tile, cluster of 8", // zig/src/cuda/qmmf.zig:147
@@ -157,36 +157,36 @@ fn keep(a: std.mem.Allocator, line: *std.ArrayList(u8), r: registry.CudaRecord, 
     try line.print(a, ".{{ .regs = {d}, .static = {d}, .bound = {d} }}, ", .{ u.regs, u.static, u.bound });
 }
 
-pub fn fatbins(gpu: check.Gpu, dir: []const u8) !void {
-    const a = gpu.gpa;
+pub fn fatbins(a: std.mem.Allocator, io: std.Io, dir: []const u8) !void {
     var n: usize = 0;
     var said: ?limits.Nvcc = null;
     const mode_path = try std.fmt.allocPrint(a, "{s}/norms.fatbin", .{dir});
     defer a.free(mode_path);
-    const mode_bytes = try std.Io.Dir.cwd().readFileAlloc(gpu.io, mode_path, a, .limited(1 << 28));
+    const mode_bytes = try std.Io.Dir.cwd().readFileAlloc(io, mode_path, a, .limited(1 << 28));
     defer a.free(mode_bytes);
     const mode_images = try contract.cubin.images(a, mode_bytes);
     defer contract.cubin.freeImages(a, mode_images);
     var release = false;
-    var thor = false;
+    var development: [2]bool = .{ false, false };
     for (mode_images) |img| {
-        thor = thor or img.sm == 110;
+        inline for (.{ 103, 110 }, 0..) |sm, i| development[i] = development[i] or img.sm == sm;
         for (limits.sms) |t| release = release or img.sm == t.sm;
     }
-    if (!release and !thor) return error.NoKnownSmInFatbins;
+    if (!release and !development[0] and !development[1]) return error.NoKnownSmInFatbins;
     for (registry.all_cuda ++ registry.cuda_controls) |r| {
         const control = std.mem.startsWith(u8, r.launch.name, "control");
         const any_target = for (limits.sms, 0..) |target, index| {
             if (registry.targetDecision(r, target, r.usage[index]) == .applicable) break true;
         } else false;
-        const thor_target = thor and r.launch.min_sm <= 110;
-        if (!control and !(release and any_target) and !thor_target) {
+        const dev_target = (development[0] and r.launch.min_sm <= 103) or
+            (development[1] and r.launch.min_sm <= 110);
+        if (!control and !(release and any_target) and !dev_target) {
             std.debug.print("N/A limits {s}: no applicable target\n", .{r.launch.name});
             continue;
         }
         const path = try std.fmt.allocPrint(a, "{s}/{s}.fatbin", .{ dir, r.launch.image });
         defer a.free(path);
-        const bytes = try std.Io.Dir.cwd().readFileAlloc(gpu.io, path, a, .limited(1 << 28));
+        const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, a, .limited(1 << 28));
         defer a.free(bytes);
         const imgs = try contract.cubin.images(a, bytes);
         defer contract.cubin.freeImages(a, imgs);
@@ -234,31 +234,33 @@ pub fn fatbins(gpu: check.Gpu, dir: []const u8) !void {
             if (out.items.len > 0) std.debug.print("{s}", .{out.items});
             try line.print(a, ".{{ .regs = {d}, .static = {d}, .bound = {d} }}, ", .{ k.usage.regs, k.usage.static, k.usage.bound });
         };
-        if (thor_target) {
-            const t = limits.target(110).?;
+        for ([_]u32{ 103, 110 }, development) |sm, enabled| {
+            if (!enabled or r.launch.min_sm > sm) continue;
+            const t = limits.target(sm).?;
             const img = for (imgs) |im| {
-                if (im.sm == 110) break im;
+                if (im.sm == sm) break im;
             } else {
-                std.debug.print("FAIL limits {s}: {s} holds no sm_110 image\n", .{ r.launch.name, path });
+                std.debug.print("FAIL limits {s}: {s} holds no sm_{d} image\n", .{ r.launch.name, path, sm });
                 n += 1;
                 continue;
             };
-            const ks = try contract.cubin.kernels(a, img.elf, 110);
+            const ks = try contract.cubin.kernels(a, img.elf, sm);
             defer a.free(ks);
             const k = for (ks) |kv| {
                 if (std.mem.eql(u8, kv.name, r.launch.symbol)) break kv;
             } else return error.SymbolNotInImage;
             const decision = registry.targetDecision(r, t, k.usage);
             if (!control and decision != .applicable) {
-                std.debug.print("N/A limits {s} sm_110: {t}\n", .{ r.launch.name, decision });
+                std.debug.print("N/A limits {s} sm_{d}: {t}\n", .{ r.launch.name, sm, decision });
             } else {
                 var out: std.ArrayList(u8) = .empty;
                 defer out.deinit(a);
-                const problems = try limits.cuda(auditLaunch(r.launch, 110), k.usage, t, &out, a);
+                const problems = try limits.cuda(auditLaunch(r.launch, sm), k.usage, t, &out, a);
                 if (control and problems == 0) n += 1;
                 if (!control) n += problems;
-                std.debug.print("{s} limits sm_110 {s}: {d} registers, {d} static shared bytes, bound {d}{s}", .{
+                std.debug.print("{s} limits sm_{d} {s}: {d} registers, {d} static shared bytes, bound {d}{s}", .{
                     if (control) (if (problems == 0) "MISSED" else "RED ") else if (problems == 0) "PASS" else "FAIL",
+                    sm,
                     r.launch.name,
                     k.usage.regs,
                     k.usage.static,
@@ -271,8 +273,8 @@ pub fn fatbins(gpu: check.Gpu, dir: []const u8) !void {
         if (release) std.debug.print("RECORD {s}: .usage = .{{ {s}}}\n", .{ r.launch.name, line.items });
     }
     try check.expect(n == 0, "kernel-contract-limits: {d} problems", .{n});
-    if (thor) {
-        check.pass("kernel-contract-limits: every registered launch fits sm_110 from compiled cubins, every control red", .{});
+    if (development[0] or development[1]) {
+        check.pass("kernel-contract-limits: development cubins audited, every applicable launch fits, every control red", .{});
     } else {
         check.pass("kernel-contract-limits: every registered launch fits sm_80, sm_86, sm_89, sm_120 and sm_121, every control red", .{});
     }
