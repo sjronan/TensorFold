@@ -37,10 +37,14 @@ pub fn image(name: []const u8) error{UnknownContractImage}![]const u8 {
 
 /// Gate 5 on this GPU, each record against the loaded function; `only`: the launches so named, no offline audit.
 pub fn live(gpu: check.Gpu, only: []const []const u8) !usize {
-    var n: usize = 0;
-    if (only.len == 0) n = try registry.checkCuda(gpu.gpa, &registry.all_cuda, false);
-    if (only.len == 0) std.debug.print("{s} limits: {d} registered CUDA launches against sm_80/86/89/120/121, {d} problems\n", .{ if (n == 0) "PASS" else "FAIL", registry.all_cuda.len, n });
     const sm: u32 = @intCast(try gpu.ctx.capability());
+    var n: usize = 0;
+    if (only.len == 0) {
+        if (try pinnedProblems(gpu.gpa, sm, &registry.all_cuda, false)) |problems| {
+            n = problems;
+            std.debug.print("{s} limits: {d} registered CUDA launches against sm_80/86/89/120/121, {d} problems\n", .{ if (n == 0) "PASS" else "FAIL", registry.all_cuda.len, n });
+        } else std.debug.print("INFO limits sm_{d}: development target uses compiled live attributes; pinned release-record coverage is separate\n", .{sm});
+    }
     const t = limits.target(sm) orelse {
         std.debug.print("N/A  limits live: sm_{d} is not a target the records cover\n", .{sm});
         return n;
@@ -111,6 +115,13 @@ pub fn live(gpu: check.Gpu, only: []const []const u8) !usize {
         std.debug.print("{s} limits live {s}: {d} threads launched, the driver allows {d}; {d} registers, {d} + {d} shared bytes (recorded {d}, {d})\n", .{ word, r.launch.name, r.launch.threads, most, regs, static, r.launch.dynamic, want.regs, want.static });
     }
     return n;
+}
+
+/// A pinned-matrix result, or null when a declared development target needs the live compiled audit.
+pub fn pinnedProblems(a: std.mem.Allocator, sm: u32, list: []const registry.CudaRecord, quiet: bool) !?usize {
+    for (limits.sms) |recorded| if (recorded.sm == sm) return try registry.checkCuda(a, list, quiet);
+    if (limits.target(sm) != null) return null;
+    return try registry.checkCuda(a, list, quiet);
 }
 
 /// The nvcc release that built a fatbin's image for `sm`, else the one its images agree on (null: none names one).

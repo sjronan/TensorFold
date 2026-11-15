@@ -54,3 +54,42 @@ test "contract image: every registered CUDA launch and control selects its own i
     for (registry.all_cuda ++ registry.cuda_controls) |r|
         try std.testing.expectEqualStrings(r.launch.image, try resolve(r.launch.image));
 }
+
+test "contract image: development live limits require compiled usage rather than unrelated pinned records" {
+    const contract = @import("core").contract;
+    const audit = @import("contract_limits.zig");
+    const a = std.testing.allocator;
+    const missing: contract.registry.CudaRecord = .{
+        .launch = .{ .name = "live fixture", .symbol = "tf_fixture", .image = "fixture", .threads = 128 },
+        .usage = contract.registry.none,
+    };
+    try std.testing.expectEqual(@as(usize, 5), try contract.registry.checkCuda(a, &.{missing}, true));
+    for ([_]u32{ 103, 110 }) |sm| {
+        try std.testing.expectEqual(@as(?usize, null), try audit.pinnedProblems(a, sm, &.{missing}, true));
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(a);
+        const target = contract.limits.target(sm).?;
+        const compiled: contract.limits.Usage = .{ .regs = 32, .static = 0, .bound = 128 };
+        try std.testing.expectEqual(@as(usize, 0), try contract.limits.cuda(missing.launch, compiled, target, &out, a));
+        var bad = missing.launch;
+        bad.threads = 512;
+        try std.testing.expect((try contract.limits.cuda(bad, compiled, target, &out, a)) > 0);
+        try std.testing.expect(std.mem.indexOf(u8, out.items, "__launch_bounds__") != null);
+    }
+}
+
+test "contract image: release and unknown live devices keep strict pinned-matrix checks" {
+    const contract = @import("core").contract;
+    const audit = @import("contract_limits.zig");
+    const a = std.testing.allocator;
+    var record: contract.registry.CudaRecord = .{
+        .launch = .{ .name = "pinned fixture", .symbol = "tf_fixture", .image = "fixture", .threads = 128 },
+        .usage = contract.registry.none,
+    };
+    for ([_]u32{ 75, 80, 86, 89, 120, 121 }) |sm|
+        try std.testing.expectEqual(@as(?usize, 5), try audit.pinnedProblems(a, sm, &.{record}, true));
+    record.usage = @splat(.{ .regs = 32, .static = 0, .bound = 128 });
+    try std.testing.expectEqual(@as(?usize, 0), try audit.pinnedProblems(a, 120, &.{record}, true));
+    record.usage[4] = .{ .regs = 0, .static = 0 };
+    try std.testing.expectEqual(@as(?usize, 1), try audit.pinnedProblems(a, 120, &.{record}, true));
+}
